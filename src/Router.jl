@@ -74,6 +74,8 @@ Base.Dict(params::Params) = params.collection
 
 Base.getindex(params, keys...) = getindex(Dict(params), keys...)
 
+ispayload(req::HTTP.Request) = req.method in [POST, PUT, PATCH]
+
 
 """
     route_request(req::Request, res::Response, ip::IPv4 = Genie.config.server_host) :: Response
@@ -508,9 +510,9 @@ function match_routes(req::HTTP.Request, res::HTTP.Response, session::Union{Geni
 
     extract_uri_params(uri.path, regex_route, param_names, param_types, params) || continue
 
-    req.method == POST && extract_post_params(req, params)
+    ispayload(req) && extract_post_params(req, params)
     isempty(r.with) || extract_extra_params(r.with, params)
-    req.method == POST && extract_request_params(req, params)
+    ispayload(req) && extract_request_params(req, params)
     action_controller_params(r.action, params)
 
     res = negotiate_content(req, res, params)
@@ -727,7 +729,7 @@ end
 Parses POST variables and adds the to the `params` `Dict`.
 """
 function extract_post_params(req::HTTP.Request, params::Params) :: Nothing
-  req.method != POST && return nothing
+  ispayload(req) || return nothing
 
   input = Input.all(req)
 
@@ -748,7 +750,7 @@ end
 """
 """
 function extract_request_params(req::HTTP.Request, params::Params) :: Nothing
-  req.method != POST && return nothing
+  ispayload(req) || return nothing
 
   params.collection[Genie.PARAMS_RAW_PAYLOAD] = String(req.body)
 
@@ -771,7 +773,7 @@ end
 """
 """
 function content_type(req::HTTP.Request) :: String
-  get(HTTPUtils.req_headers_to_dict(req), "content-type", "")
+  get(Genie.HTTPUtils.req_headers_to_dict(req), "content-type", "")
 end
 function content_type() :: String
   content_type(_params_(Genie.PARAMS_REQUEST_KEY))
@@ -781,7 +783,7 @@ end
 """
 """
 function content_length(req::HTTP.Request) :: Int
-  parse(Int, get(HTTPUtils.req_headers_to_dict(req), "content-length", "0"))
+  parse(Int, get(Genie.HTTPUtils.req_headers_to_dict(req), "content-length", "0"))
 end
 function content_length() :: Int
   content_length(_params_(Genie.PARAMS_REQUEST_KEY))
@@ -1094,6 +1096,7 @@ function serve_error_file(error_code::Int, error_message::String = "", params::D
 
     if Genie.Configuration.isdev()
       if error_code == 500
+        error_page = replace(error_page, "<error_description/>"=>escapeHTML(error_message))
         error_message =
                         """$("#" ^ 25) ERROR STACKTRACE $("#" ^ 25)\n$error_message                             $("\n" ^ 3)""" *
                         """$("#" ^ 25)  REQUEST PARAMS  $("#" ^ 25)\n$(Millboard.table(params))                 $("\n" ^ 3)""" *
