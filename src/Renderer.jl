@@ -1,8 +1,8 @@
 module Renderer
 
-export respond, html, html!, json, json!, redirect_to, has_requested
+export respond, html, json, redirect_to, has_requested
 
-using Nullables, JSON, HTTP, Reexport
+using Nullables, JSON, HTTP, Reexport, Markdown
 using Genie, Genie.Util, Genie.Configuration, Genie.Loggers
 
 @reexport using Genie.Flax
@@ -51,8 +51,8 @@ function tohtml(resource::ResourcePath, action::ResourcePath;
                   layout::ResourcePath = Genie.config.renderer_default_layout_file, context::Module = @__MODULE__, vars...) :: WebRenderable
   WebRenderable(Flax.html_renderer(resource, action; layout = layout, mod = context, vars...) |> Base.invokelatest)
 end
-function tohtml(data::String; context::Module = @__MODULE__, vars...) :: WebRenderable
-  WebRenderable(Flax.html_renderer(data; mod = context, vars...) |> Base.invokelatest)
+function tohtml(data::String; context::Module = @__MODULE__, layout::Union{ResourcePath,Nothing} = nothing, vars...) :: WebRenderable
+  WebRenderable(Flax.html_renderer(data; mod = context, layout = layout, vars...)  |> Base.invokelatest)
 end
 function tohtml(restful_resource::WebResource; context::Module = @__MODULE__, vars...) :: WebRenderable
   WebRenderable(restful_resource.resource, restful_resource.action, layout = restful_resource.layout, context = context, vars...)
@@ -65,10 +65,12 @@ function html(resource::ResourcePath, action::ResourcePath; layout::ResourcePath
                 context::Module = @__MODULE__, status::Int = 200, headers::HTTPHeaders = HTTPHeaders(), vars...) :: HTTP.Response
   WebRenderable(tohtml(resource, action; layout = layout, context = context, vars...), status, headers) |> respond
 end
-function html(data::String; context::Module = @__MODULE__, status::Int = 200, headers::HTTPHeaders = HTTPHeaders(), vars...) :: HTTP.Response
-  WebRenderable(tohtml(data; context = context, vars...), status, headers) |> respond
+function html(data::String; context::Module = @__MODULE__, status::Int = 200, headers::HTTPHeaders = HTTPHeaders(), layout::Union{ResourcePath,Nothing} = nothing, vars...) :: HTTP.Response
+  WebRenderable(tohtml(data; context = context, layout = layout, vars...), status, headers) |> respond
 end
-const html! = html
+function html(data::HTML; context::Module = @__MODULE__, status::Int = 200, headers::HTTPHeaders = HTTPHeaders(), layout::Union{ResourcePath,Nothing} = nothing, vars...) :: HTTP.Response
+  html(data.content, context = context, status = status, headers = headers, layout = layout, vars...)
+end
 
 ### JSON RENDERING ###
 
@@ -92,7 +94,21 @@ end
 function json(data; status::Int = 200, headers::HTTPHeaders = HTTPHeaders()) :: HTTP.Response
   WebRenderable(tojson(data), status, headers) |> respond
 end
-const json! = json
+
+### MARKDOWN RENDERING ###
+
+function tomd(resource::ResourcePath, action::ResourcePath;
+                layout::ResourcePath = Genie.config.renderer_default_layout_file, context::Module = @__MODULE__, vars...) :: WebRenderable
+  WebRenderable(Flax.md_renderer(resource, action; layout = layout, mod = context, vars...) |> Base.invokelatest)
+end
+function tomd(data::String; context::Module = @__MODULE__, vars...) :: WebRenderable
+  WebRenderable(Flax.md_renderer(data; mod = context, vars...) |> Base.invokelatest)
+end
+function tomd(restful_resource::WebResource; context::Module = @__MODULE__, vars...) :: WebRenderable
+  WebRenderable(restful_resource.resource, restful_resource.action, layout = restful_resource.layout, context = context, vars...)
+end
+
+### JS RENDERING ###
 
 ### REDIRECT RESPONSES ###
 
