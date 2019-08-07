@@ -1,4 +1,10 @@
+cd(@__DIR__)
+using Pkg
+pkg"activate ."
+
 using Revise
+
+const ROOT_PATH = pwd()
 
 """
     bootstrap_genie() :: Nothing
@@ -6,7 +12,6 @@ using Revise
 Bootstraps the Genie framework setting up paths and workers. Invoked automatically.
 """
 function bootstrap() :: Nothing
-  cd(@__DIR__)
   printstyled("""
    _____         _
   |   __|___ ___|_|___
@@ -29,23 +34,8 @@ end
 
 bootstrap()
 
-include(joinpath("src", "App.jl")); using .App
-include(joinpath("src", "Toolbox.jl")); using .Toolbox
+using Genie, Genie.App, Genie.Toolbox
 
-using Genie
+Genie.load(context = @__MODULE__)
 
-function main()
-  Core.eval(Genie, Meta.parse("""push!(LOAD_PATH, joinpath($(repr(pwd())), "src"))"""))
-  Core.eval(Genie, Meta.parse("const App = $(@__MODULE__).App"))
-  Core.eval(Genie, Meta.parse("const Toolbox = $(@__MODULE__).Toolbox"))
-
-  load()
-
-  Core.eval(Genie, Meta.parse("config = App.config"))
-  Core.eval(Genie, Meta.parse("""const SECRET_TOKEN = "$(secret_token())" """))
-  Core.eval(Genie, Meta.parse("""const ASSET_FINGERPRINT = "$(App.ASSET_FINGERPRINT)" """))
-
-  Genie.run()
-end
-
-main()
+Genie.run()

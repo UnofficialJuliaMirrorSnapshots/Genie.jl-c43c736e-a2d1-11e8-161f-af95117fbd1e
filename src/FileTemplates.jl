@@ -21,7 +21,7 @@ function newtask(module_name::String) :: String
   \"\"\"
   Description of the task here
   \"\"\"
-  function run_task()
+  function runtask()
     # Build something great
   end
 
@@ -76,13 +76,11 @@ function appmodule(path::String)
   function main()
     Base.eval(Main, :(const UserApp = $appname))
 
-    include("../genie.jl")
+    include(joinpath("..", "genie.jl"))
 
     Base.eval(Main, :(const Genie = $appname.Genie))
     Base.eval(Main, :(using Genie))
-  end
-
-  main()
+  end; main()
 
   end
   """

@@ -24,9 +24,11 @@ include(joinpath(@__DIR__, "genie_types.jl"))
 
 include("Loggers.jl")
 include("HTTPUtils.jl")
+include("App.jl")
 include("Inflector.jl")
 include("Util.jl")
 include("FileTemplates.jl")
+include("Toolbox.jl")
 include("Generator.jl")
 include("Tester.jl")
 include("Encryption.jl")
@@ -47,8 +49,9 @@ include("Requests.jl")
 include("Plugins.jl")
 
 using .Loggers, .HTTPUtils
+using .App
 using .Inflector, .Util
-using .FileTemplates, .Generator, .Tester, .Encryption, .Cookies, .Sessions
+using .FileTemplates, .Toolbox, .Generator, .Tester, .Encryption, .Cookies, .Sessions
 using .Input, .Renderer, .Assets, .Router, .Helpers, .AppServer, .Commands
 using .Flax, .AppServer, .Plugins
 
@@ -67,11 +70,25 @@ end
 
 
 """
+"""
+function serve(path = DOC_ROOT_PATH, params...; kwparams...)
+  route("/") do
+    serve_static_file("index.html", root = path)
+  end
+  route(".*") do
+    serve_static_file(@params(:REQUEST).target, root = path)
+  end
+
+  Genie.startup(params...; kwparams...)
+end
+
+
+"""
     newapp(path = "."; autostart = true, fullstack = false, dbsupport = true) :: Nothing
 
 Scaffolds a new Genie app.
 """
-function newapp(path = "."; autostart = true, fullstack = false, dbsupport = true) :: Nothing
+function newapp(path = "."; autostart = true, fullstack = false, dbsupport = false) :: Nothing
   REPL.newapp(path, autostart = autostart, fullstack = fullstack, dbsupport = dbsupport)
 end
 const new_app = newapp
