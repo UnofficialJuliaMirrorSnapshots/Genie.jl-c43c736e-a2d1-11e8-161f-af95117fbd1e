@@ -7,11 +7,11 @@ using Revise, Genie, Genie.Loggers, Genie.FileTemplates, Genie.Inflector, Genie.
 
 
 """
-    new_controller(cmd_args::Dict{String,Any}) :: Nothing
+    newcontroller(cmd_args::Dict{String,Any}) :: Nothing
 
 Generates a new Genie controller file and persists it to the resources folder.
 """
-function new_controller(cmd_args::Dict{String,Any}; path::String = ".", pluralize::Bool = true) :: Nothing
+function newcontroller(cmd_args::Dict{String,Any}; path::String = ".", pluralize::Bool = true) :: Nothing
   resource_name = cmd_args["controller:new"]
   Genie.Inflector.is_singular(resource_name) && pluralize && (resource_name = Inflector.to_plural(resource_name) |> Base.get)
   resource_name = uppercasefirst(resource_name)
@@ -23,16 +23,15 @@ function new_controller(cmd_args::Dict{String,Any}; path::String = ".", pluraliz
 
   nothing
 end
-const newcontroller = new_controller
 
 
 """
-    new_resource(cmd_args::Dict{String,Any}, config::Settings) :: Nothing
-    new_resource(resource_name::Union{String,Symbol}) :: Nothing
+    newresource(cmd_args::Dict{String,Any}, config::Settings) :: Nothing
+    newresource(resource_name::Union{String,Symbol}) :: Nothing
 
 Generates all the files associated with a new resource and persists them to the resources folder.
 """
-function new_resource(cmd_args::Dict{String,Any}; path::String = ".", pluralize::Bool = true) :: Nothing
+function newresource(cmd_args::Dict{String,Any}; path::String = ".", pluralize::Bool = true) :: Nothing
   resource_name = uppercasefirst(cmd_args["resource:new"])
 
   if Genie.Inflector.is_singular(resource_name) && pluralize
@@ -55,10 +54,9 @@ function new_resource(cmd_args::Dict{String,Any}; path::String = ".", pluralize:
 
   nothing
 end
-function new_resource(resource_name::Union{String,Symbol}; path::String = ".", pluralize::Bool = true) :: Nothing
-  new_resource(Dict{String,Any}("resource:new" => string(resource_name)), path = path, pluralize = pluralize)
+function newresource(resource_name::Union{String,Symbol}; path::String = ".", pluralize::Bool = true) :: Nothing
+  newresource(Dict{String,Any}("resource:new" => string(resource_name)), path = path, pluralize = pluralize)
 end
-const newresource = new_resource
 
 
 """
@@ -67,6 +65,8 @@ const newresource = new_resource
 Computes and creates the directories structure needed to persist a new resource.
 """
 function setup_resource_path(resource_name::String; path::String = ".") :: String
+  isdir(Genie.APP_PATH) || Genie.REPL.copy_mvc_support(path)
+
   resource_path = joinpath(path, Genie.RESOURCES_PATH, lowercase(resource_name))
 
   if ! isdir(resource_path)
@@ -90,13 +90,13 @@ function write_resource_file(resource_path::String, file_name::String, resource_
     if resource_type == :controller
       resource_does_not_exist(resource_path, file_name) || return true
       open(joinpath(resource_path, file_name), "w") do f
-        write(f, Genie.FileTemplates.new_controller(resource_name))
+        write(f, Genie.FileTemplates.newcontroller(resource_name))
       end
 
     elseif resource_type == :test
       resource_does_not_exist(resource_path, file_name) || return true
       open(joinpath(resource_path, file_name), "w") do f
-        write(f, Genie.FileTemplates.new_test(resource_name, Base.get(Inflector.to_singular(resource_name)) ))
+        write(f, Genie.FileTemplates.newtest(resource_name, Base.get(Inflector.to_singular(resource_name)) ))
       end
 
     else
@@ -116,8 +116,6 @@ function write_resource_file(resource_path::String, file_name::String, resource_
 end
 
 
-"""
-"""
 function resource_does_not_exist(resource_path::String, file_name::String) :: Bool
   if isfile(joinpath(resource_path, file_name))
     log("File already exists, $(joinpath(resource_path, file_name)) - skipping", :warn)
@@ -128,8 +126,6 @@ function resource_does_not_exist(resource_path::String, file_name::String) :: Bo
 end
 
 
-"""
-"""
 function controller_file_name(resource_name::Union{String,Symbol})
   string(resource_name) * Genie.GENIE_CONTROLLER_FILE_POSTFIX
 end
