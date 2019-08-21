@@ -3,7 +3,7 @@ Core genie configuration / settings functionality.
 """
 module Configuration
 
-const GENIE_VERSION = v"0.13.2"
+const GENIE_VERSION = v"0.13.4"
 
 using YAML
 using Genie
@@ -20,8 +20,6 @@ const TEST  = "test"
 
 """
     isdev()  :: Bool
-    isprod() :: Bool
-    istest() :: Bool
 
 Set of utility functions that return whether or not the current environment is development, production or testing.
 
@@ -35,15 +33,67 @@ false
 ```
 """
 isdev() :: Bool  = (Genie.config.app_env == DEV)
+
+
+"""
+    isprod() :: Bool
+
+Set of utility functions that return whether or not the current environment is development, production or testing.
+
+# Examples
+```julia
+julia> Configuration.isdev()
+true
+
+julia> Configuration.isprod()
+false
+```
+"""
 isprod():: Bool = (Genie.config.app_env == PROD)
+
+
+"""
+    istest() :: Bool
+
+Set of utility functions that return whether or not the current environment is development, production or testing.
+
+# Examples
+```julia
+julia> Configuration.isdev()
+true
+
+julia> Configuration.isprod()
+false
+```
+"""
 istest():: Bool = (Genie.config.app_env == TEST)
 
+
+"""
+    @ifdev(e::Expr)
+
+Executes expression if app is running in dev mode
+"""
 macro ifdev(e::Expr)
   isdev() && esc(e)
 end
+
+
+"""
+    @ifprod(e::Expr)
+
+Executes expression if app is running in prod mode
+"""
 macro ifprod(e::Expr)
   isprod() && esc(e)
 end
+
+
+"""
+    @iftest(e::Expr)
+
+Executes expression if app is running in test mode
+"""
 macro iftest(e::Expr)
   istest() && esc(e)
 end
@@ -142,6 +192,7 @@ mutable struct Settings
   run_as_server::Bool
 
   websocket_server::Bool
+  websocket_port::Int
 
   renderer_default_layout_file::Symbol
 
@@ -189,6 +240,7 @@ mutable struct Settings
             run_as_server = false,
 
             websocket_server = false,
+            websocket_port = 8001,
 
             renderer_default_layout_file = :app,
         ) =
@@ -205,7 +257,7 @@ mutable struct Settings
                   inflector_irregulars,
                   flax_compile_templates, flax_autoregister_webcomponents,
                   run_as_server,
-                  websocket_server,
+                  websocket_server, websocket_port,
                   renderer_default_layout_file
                 )
 end
