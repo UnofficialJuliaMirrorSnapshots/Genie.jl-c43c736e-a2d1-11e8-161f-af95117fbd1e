@@ -17,9 +17,7 @@ const ASSET_FINGERPRINT = ""
 
 Kickstarts the loading of a Genie app by loading the environment settings.
 """
-function bootstrap(context::Union{Module,Nothing} = nothing) :: Nothing
-  context = Genie.default_context(context)
-
+function bootstrap(context::Union{Module,Nothing} = Genie.default_context(context)) :: Nothing
   if haskey(ENV, "GENIE_ENV") && isfile(joinpath(Genie.ENV_PATH, ENV["GENIE_ENV"] * ".jl"))
     isfile(joinpath(Genie.ENV_PATH, Genie.GLOBAL_ENV_FILE_NAME)) && Base.include(context, joinpath(Genie.ENV_PATH, Genie.GLOBAL_ENV_FILE_NAME))
     isfile(joinpath(Genie.ENV_PATH, ENV["GENIE_ENV"] * ".jl")) && Base.include(context, joinpath(Genie.ENV_PATH, ENV["GENIE_ENV"] * ".jl"))
@@ -28,7 +26,27 @@ function bootstrap(context::Union{Module,Nothing} = nothing) :: Nothing
     Core.eval(context, Meta.parse("const config = Configuration.Settings(app_env = Configuration.DEV)"))
   end
 
-  Core.eval(Genie, Meta.parse("config = $(context).config"))
+  for f in fieldnames(typeof(context.config))
+    setfield!(Genie.config, f, getfield(context.config, f))
+  end
+
+  printstyled("""
+
+   _____         _
+  |   __|___ ___|_|___
+  |  |  | -_|   | | -_|
+  |_____|___|_|_|_|___|
+
+  """, color = :red, bold = true)
+
+  printstyled("| Web: https://genieframework.com\n", color = :light_black, bold = true)
+  printstyled("| GitHub: https://github.com/genieframework/Genie.jl\n", color = :light_black, bold = true)
+  printstyled("| Docs: https://genieframework.github.io/Genie.jl\n", color = :light_black, bold = true)
+  printstyled("| Gitter: https://gitter.im/essenciary/Genie.jl\n", color = :light_black, bold = true)
+  printstyled("| Twitter: https://twitter.com/GenieMVC\n\n", color = :light_black, bold = true)
+
+  printstyled("Genie v$(Genie.Configuration.GENIE_VERSION)\n", color = :green, bold = true)
+  printstyled("Active env: $(ENV["GENIE_ENV"] |> uppercase)\n\n", color = :light_blue, bold = true)
 
   nothing
 end
@@ -39,7 +57,8 @@ end
 ### THIS IS LOADED INTO the Genie module !!!
 
 
-using .Loggers, .Configuration
+using Logging
+using .Configuration
 
 
 ### PUBLIC ###
@@ -90,10 +109,11 @@ function newresource(resource_name::String; pluralize::Bool = true, context::Uni
   Generator.newresource(Dict{String,Any}("resource:new" => resource_name), pluralize = pluralize)
 
   try
-    Core.eval(context, :(SearchLight.Generator.newresource(uppercasefirst($resource_name))))
+    pluralize || error("SearchLight resources need to be pluralized")
+    Core.eval(context, :(SearchLight.Generator.newresource(uppercasefirst($resource_name)))) # SearchLight resources don't work on singular
   catch ex
     @error ex
-    log("Skipping SearchLight", :warn)
+    @warn "Skipping SearchLight"
   end
 
   load_resources()
@@ -342,8 +362,6 @@ function load(; context::Union{Module,Nothing} = nothing) :: Nothing
   App.bootstrap(context)
 
   load_configurations(context = context)
-
-  Genie.Loggers.log_path!()
 
   Core.eval(Genie, Meta.parse("""const SECRET_TOKEN = "$(secret_token(context = context))" """))
   Core.eval(Genie, Meta.parse("""const ASSET_FINGERPRINT = "$(App.ASSET_FINGERPRINT)" """))

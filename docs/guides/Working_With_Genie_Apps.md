@@ -166,10 +166,9 @@ Now all we need to do is to move the HTML code out of the controller and into th
 <!-- billgatesbooks.jl.html -->
 <h1>Bill Gates' top $( length(@vars(:books)) ) recommended books</h1>
 <ul>
-   <%
-      @foreach(@vars(:books)) do book
-         "<li>$(book.title) by $(book.author)"
-      end
+   <% @foreach(@vars(:books)) do book %>
+      <li>$(book.title) by $(book.author)
+    <% end %>
    %>
 </ul>
 ```
@@ -457,7 +456,7 @@ Next, we add `SearchLight`:
 Genie is designed to seamlessly integrate with SearchLight and provides access to various database oriented generators. First we need to tell Genie/SearchLight how to connect to the database. Let's use them to set up our database support. Run this in the Genie/Julia REPL:
 
 ```julia
-julia> Genie.Generator.dbsupport()
+julia> Genie.Generator.db_support()
 ```
 
 The command will add a `db/` folder within the root of the app. What we're looking for is the `db/connection.yml` file. Let's edit it. Make the file to look like this:
@@ -761,7 +760,7 @@ And finally, our JSON view needs a bit of tweaking too:
 Now if we just start the server we'll see the list of books served from the database, at <http://localhost:8000/api/v1/bgbooks>
 
 ```julia
-julia> startup()
+julia> up()
 ```
 
 Let's add a new book to see how it works:
