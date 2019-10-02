@@ -110,4 +110,41 @@ function runtests()
   """
 end
 
+
+function dockerfile(; user::String = "genie", supervisor::Bool = false, nginx::Bool = false, env::String = "dev",
+                      filename::String = "Dockerfile", port::Int = 8000, dockerport::Int = 80)
+  appdir = "/home/$user/app"
+
+  """
+  FROM julia:latest
+
+  # user
+  RUN useradd --create-home --shell /bin/bash $user
+
+  # app
+  RUN mkdir $appdir
+  COPY . $appdir
+  WORKDIR $appdir
+
+  RUN chown $user:$user -R *
+
+  RUN chmod +x bin/repl
+  RUN chmod +x bin/server
+  RUN chmod +x bin/serverinteractive
+
+  USER $user
+
+  RUN julia -e "using Pkg; pkg\\"activate . \\"; pkg\\"instantiate\\"; pkg\\"precompile\\"; "
+
+  # ports
+  EXPOSE $port
+  EXPOSE $dockerport
+
+  ENV JULIA_DEPOT_PATH "/home/$user/.julia"
+  ENV GENIE_ENV "$env"
+
+  CMD ["bin/server"]
+  """
+end
+
 end

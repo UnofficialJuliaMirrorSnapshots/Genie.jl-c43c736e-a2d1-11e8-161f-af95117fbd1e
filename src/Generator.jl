@@ -326,7 +326,6 @@ function install_app_dependencies(app_path::String = ".") :: Nothing
   pkg"activate ."
 
   pkg"add Genie#master"
-  pkg"add JSON"
   pkg"add Millboard"
   pkg"add Revise"
   pkg"add LoggingExtras"
@@ -347,7 +346,7 @@ function autostart_app(autostart::Bool = true) :: Nothing
   else
     @info("Your new Genie app is ready!
         Run \njulia> Genie.loadapp() \nto load the app's environment
-        and then \njulia> Genie.startup() \nto start the web server on port 8000.")
+        and then \njulia> up() \nto start the web server on port 8000.")
   end
 
   nothing
@@ -441,6 +440,49 @@ function newapp(path::String = "."; autostart::Bool = true, fullstack::Bool = fa
   autostart_app(autostart)
 
   nothing
+end
+
+
+"""
+    newapp_webservice(path::String = "."; autostart::Bool = true, dbsupport::Bool = false) :: Nothing
+
+Template for scaffolding a new Genie app suitable for nimble web services.
+
+# Arguments
+- `path::String`: the name of the app and the path where to bootstrap it
+- `autostart::Bool`: automatically start the app once the file structure is created
+- `dbsupport::Bool`: bootstrap the files needed for DB connection setup via the SearchLight ORM
+"""
+function newapp_webservice(path::String = "."; autostart::Bool = true, dbsupport::Bool = false) :: Nothing
+  newapp(path, autostart = autostart, fullstack = false, dbsupport = dbsupport, mvcsupport = false)
+end
+
+
+"""
+    newapp_mvc(path::String = "."; autostart::Bool = true) :: Nothing
+
+Template for scaffolding a new Genie app suitable for MVC web applications (includes MVC structure and DB support).
+
+# Arguments
+- `path::String`: the name of the app and the path where to bootstrap it
+- `autostart::Bool`: automatically start the app once the file structure is created
+"""
+function newapp_mvc(path::String = "."; autostart::Bool = true) :: Nothing
+  newapp(path, autostart = autostart, fullstack = false, dbsupport = true, mvcsupport = true)
+end
+
+
+"""
+    newapp_fullstack(path::String = "."; autostart::Bool = true) :: Nothing
+
+Template for scaffolding a new Genie app suitable for full stack web applications (includes MVC structure, DB support, and frontend asset pipeline).
+
+# Arguments
+- `path::String`: the name of the app and the path where to bootstrap it
+- `autostart::Bool`: automatically start the app once the file structure is created
+"""
+function newapp_fullstack(path::String = "."; autostart::Bool = true) :: Nothing
+  newapp(path, autostart = autostart, fullstack = true, dbsupport = true, mvcsupport = true)
 end
 
 

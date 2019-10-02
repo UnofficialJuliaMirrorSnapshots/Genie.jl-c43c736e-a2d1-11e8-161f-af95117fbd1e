@@ -2,7 +2,7 @@ module Router
 
 using Revise
 using Reexport, Logging
-using HTTP, URIParser, HttpCommon, Nullables, Sockets, Millboard, JSON, Dates, OrderedCollections
+using HTTP, URIParser, HttpCommon, Nullables, Sockets, Millboard, Dates, OrderedCollections
 using Genie, Genie.HTTPUtils, Genie.Sessions, Genie.Configuration, Genie.Input, Genie.Util, Genie.Renderer, Genie.Exceptions
 
 include("mimetypes.jl")
@@ -10,7 +10,7 @@ include("mimetypes.jl")
 export route, routes, channel, channels, serve_static_file
 export GET, POST, PUT, PATCH, DELETE, OPTIONS
 export tolink, linkto, responsetype, toroute
-export error_404, error_500, error_xxx
+export error_404, error_500, error_xxx, err
 export @params, @routes, @channels
 
 @reexport using HttpCommon
@@ -509,7 +509,8 @@ function match_routes(req::HTTP.Request, res::HTTP.Response, session::Union{Geni
 
               result
             catch ex
-              isa(ex, ExceptionalResponse) ? ex.response : rethrow(ex)
+              isa(ex, RuntimeException) && to_response(ex)
+              isa(ex, ExceptionalResponse) ? (return ex.response) : Renderer.respond(ex) #rethrow(ex)
             end
   end
 
@@ -527,7 +528,7 @@ function match_channels(req, msg::String, ws_client, params::Params, session::Un
     parsed_channel, param_names, param_types = parse_channel(c.path)
 
     payload::Dict{String,Any} = try
-                                  JSON.parse(msg)
+                                  Renderer.JSONParser.parse(msg)
                                 catch ex
                                   Dict{String,Any}()
                                 end
@@ -721,7 +722,7 @@ function extract_request_params(req::HTTP.Request, params::Params) :: Nothing
 
   if request_type_is(req, :json) && content_length(req) > 0
     try
-      params.collection[Genie.PARAMS_JSON_PAYLOAD] = JSON.parse(params.collection[Genie.PARAMS_RAW_PAYLOAD])
+      params.collection[Genie.PARAMS_JSON_PAYLOAD] = Renderer.JSONParser.parse(params.collection[Genie.PARAMS_RAW_PAYLOAD])
     catch ex
       @error sprint(showerror, ex)
       @warn "Setting @params(:JSON_PAYLOAD) to Nothing"
@@ -846,19 +847,17 @@ Converts the result of invoking the controller action to a `Response`.
 function to_response(action_result) :: HTTP.Response
   isa(action_result, HTTP.Response) && return action_result
 
-  return  try
-            if isa(action_result, Tuple)
-              HTTP.Response(action_result...)
-            elseif isa(action_result, Nothing)
-              HTTP.Response("")
-            else
-              HTTP.Response(string(action_result))
-            end
-          catch ex
-            @error "Can't convert $action_result to HttpServer.Response"
-
-            rethrow(ex)
-          end
+  if isa(action_result, Tuple)
+    HTTP.Response(action_result...)
+  elseif isa(action_result, Nothing)
+    HTTP.Response("")
+  elseif isa(action_result, String)
+    Renderer.respond(action_result)
+  elseif isa(action_result, RuntimeException)
+    err(action_result.message, error_info = action_result.info, error_code = action_result.code)
+  else
+    HTTP.Response(string(action_result))
+  end
 end
 
 
@@ -1026,7 +1025,7 @@ end
 
 """
 """
-function error_404(resource = "", req = HTTP.Request("", "", ["Content-Type" => request_mappings[:html]])) :: HTTP.Response
+function error_404(resource::String = "", req::HTTP.Request = HTTP.Request("", "", ["Content-Type" => request_mappings[:html]])) :: HTTP.Response
   if request_type_is(req, :json)
     HTTP.Response(404, ["Content-Type" => request_mappings[:json]], body = """{ "error": "404 - NOT FOUND" }""")
   elseif request_type_is(req, :text)
@@ -1039,9 +1038,9 @@ end
 
 """
 """
-function error_500(error_message = "", req = HTTP.Request("", "", ["Content-Type" => request_mappings[:html]])) :: HTTP.Response
+function error_500(error_message::String = "", req::HTTP.Request = HTTP.Request("", "", ["Content-Type" => request_mappings[:html]])) :: HTTP.Response
   if request_type_is(req, :json)
-    HTTP.Response(500, ["Content-Type" => request_mappings[:json]], body = JSON.json(Dict("error" => "500 - $error_message")))
+    HTTP.Response(500, ["Content-Type" => request_mappings[:json]], body = Renderer.JSONParser.json(Dict("error" => "500 - $error_message")))
   elseif request_type_is(req, :text)
     HTTP.Response(500, ["Content-Type" => request_mappings[:text]], body = "Error: 500 - $error_message")
   else
@@ -1052,14 +1051,19 @@ end
 
 """
 """
-function error_xxx(error_message = "", req = HTTP.Request("", "", ["Content-Type" => request_mappings[:html]]); error_info::String = "", error_code::Int = 500) :: HTTP.Response
+function error_xxx(error_message::String = "", req::HTTP.Request = HTTP.Request("", "", ["Content-Type" => request_mappings[:html]]); error_info::String = "", error_code::Int = 500) :: HTTP.Response
   if request_type_is(req, :json)
-    HTTP.Response(error_code, ["Content-Type" => request_mappings[:json]], body = JSON.json(Dict("error" => "500 - $error_message")))
+    HTTP.Response(error_code, ["Content-Type" => request_mappings[:json]], body = Renderer.JSONParser.json(Dict("error" => "500 - $error_message")))
   elseif request_type_is(req, :text)
     HTTP.Response(error_code, ["Content-Type" => request_mappings[:text]], body = "Error: 500 - $error_message")
   else
     serve_error_file(error_code, error_message, @params, error_info = error_info)
   end
+end
+
+
+function err(error_message::String; error_info::String = "", error_code::Int = 500) :: HTTP.Response
+  error_xxx(error_message, @params(:REQUEST), error_info = error_info, error_code = error_code)
 end
 
 
