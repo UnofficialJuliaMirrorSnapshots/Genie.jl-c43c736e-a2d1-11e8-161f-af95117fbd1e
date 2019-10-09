@@ -4,15 +4,16 @@ Handles Http server related functionality, manages requests and responses and th
 module AppServer
 
 using Revise, HTTP, HTTP.IOExtras, HTTP.Sockets, Millboard, MbedTLS, URIParser, Sockets, Distributed, Logging
-using Genie, Genie.Configuration, Genie.Sessions, Genie.Flax, Genie.Router, Genie.WebChannels
+using Genie, Genie.Configuration, Genie.Sessions, Genie.Flax, Genie.Router, Genie.WebChannels, Genie.Exceptions
 
+const SERVERS = Dict{Symbol,Task}()
 
 ### PRIVATE ###
 
 
 """
     startup(port::Int = Genie.config.server_port, host::String = Genie.config.server_host;
-        ws_port::Int = Genie.config.websocket_port, async::Bool = ! Genie.config.run_as_server) :: Nothing
+        ws_port::Int = Genie.config.websocket_port, async::Bool = ! Genie.config.run_as_server) :: Dict{Symbol,Task}
 
 Starts the web server.
 
@@ -31,13 +32,14 @@ Web Server starting at http://0.0.0.0:8000
 """
 function startup(port::Int = Genie.config.server_port, host::String = Genie.config.server_host;
                   ws_port::Int = Genie.config.websocket_port, async::Bool = ! Genie.config.run_as_server,
-                  verbose::Bool = false, ratelimit::Union{Rational{Int},Nothing} = nothing) :: Nothing
+                  verbose::Bool = false, ratelimit::Union{Rational{Int},Nothing} = nothing,
+                  server::Union{Sockets.TCPServer,Nothing} = nothing) :: Dict{Symbol,Task}
 
   # Create build folders
   Genie.config.flax_compile_templates && Flax.create_build_folders()
 
   if Genie.config.websocket_server
-    @async HTTP.listen(host, ws_port) do req
+    SERVERS[:wss] = @async HTTP.listen(host, ws_port) do req
       if HTTP.WebSockets.is_upgrade(req.message)
         HTTP.WebSockets.upgrade(req) do ws
           setup_ws_handler(req.message, ws)
@@ -49,7 +51,7 @@ function startup(port::Int = Genie.config.server_port, host::String = Genie.conf
   end
 
   command = () -> begin
-    HTTP.serve(parse(IPAddr, host), port, verbose = verbose, rate_limit = ratelimit) do req::HTTP.Request
+    HTTP.serve(parse(IPAddr, host), port, verbose = verbose, rate_limit = ratelimit, server = server) do req::HTTP.Request
       setup_http_handler(req)
     end
   end
@@ -57,14 +59,65 @@ function startup(port::Int = Genie.config.server_port, host::String = Genie.conf
   printstyled("Web Server starting at http://$host:$port \n", color = :light_blue, bold = true)
 
   if async
-    @async command()
+    SERVERS[:ws] = @async command()
     printstyled("Web Server running at http://$host:$port \n", color = :light_blue, bold = true)
   else
-    command()
+    SERVERS[:ws] = command()
     printstyled("Web Server stopped \n", color = :light_blue, bold = true)
   end
 
-  nothing
+  SERVERS
+end
+
+
+"""
+    set_headers!(req::HTTP.Request, res::HTTP.Response, app_response::HTTP.Response) :: HTTP.Response
+
+Configures the response headers.
+"""
+function set_headers!(req::HTTP.Request, res::HTTP.Response, app_response::HTTP.Response) :: HTTP.Response
+  if req.method == Genie.Router.OPTIONS || req.method == Genie.Router.GET
+
+    request_origin = get(Dict(req.headers), "Origin", "")
+
+    allowed_origin_dict = Dict("Access-Control-Allow-Origin" =>
+      in(request_origin, Genie.config.cors_allowed_origins)
+      ? request_origin
+      : strip(Genie.config.cors_headers["Access-Control-Allow-Origin"])
+    )
+
+    app_response.headers = [d for d in merge(Genie.config.cors_headers, allowed_origin_dict, Dict(res.headers), Dict(app_response.headers))]
+  end
+
+  app_response.headers = [d for d in merge(Dict(res.headers), Dict(app_response.headers))]
+
+  app_response
+end
+
+
+"""
+    sign_response!(res::HTTP.Response) :: HTTP.Response
+
+Adds a signature header to the response using the value in `Genie.config.server_signature`.
+If `Genie.config.server_signature` is empty, the header is not added.
+"""
+@inline function sign_response!(res::HTTP.Response) :: HTTP.Response
+  headers = Dict(res.headers)
+  isempty(Genie.config.server_signature) || (headers["Server"] = Genie.config.server_signature)
+
+  res.headers = [k for k in headers]
+  res
+end
+
+
+"""
+    handle_request(req::HTTP.Request, res::HTTP.Response, ip::IPv4 = IPv4(Genie.config.server_host)) :: HTTP.Response
+
+Http server handler function - invoked when the server gets a request.
+"""
+@inline function handle_request(req::HTTP.Request, res::HTTP.Response, ip::IPv4 = IPv4(Genie.config.server_host)) :: HTTP.Response
+  isempty(Genie.config.server_signature) && sign_response!(res)
+  set_headers!(req, res, Genie.Router.route_request(req, res, ip))
 end
 
 
@@ -76,11 +129,14 @@ Configures the handler for the HTTP Request and handles errors.
 @inline function setup_http_handler(req::HTTP.Request, res::HTTP.Response = HTTP.Response()) :: HTTP.Response
   try
     @fetch handle_request(req, res)
-  catch ex
+  catch ex # ex is a Distributed.RemoteException
+    if isa(ex, RemoteException) && isa(ex.captured, CapturedException) && isa(ex.captured.ex, Genie.Exceptions.RuntimeException)
+      @error ex.captured.ex
+      return Genie.Router.err(ex.captured.ex.message, error_info = string(ex.captured.ex.code, " ", ex.captured.ex.info), error_code = ex.captured.ex.code)
+    end
+
     error_message = string(sprint(showerror, ex), "\n\n")
-
     @error error_message
-
     message = Genie.Configuration.isprod() ?
                 "The error has been logged and we'll look into it ASAP." :
                 error_message
@@ -105,17 +161,6 @@ end
 
 
 """
-    handle_request(req::HTTP.Request, res::HTTP.Response, ip::IPv4 = IPv4(Genie.config.server_host)) :: HTTP.Response
-
-Http server handler function - invoked when the server gets a request.
-"""
-@inline function handle_request(req::HTTP.Request, res::HTTP.Response, ip::IPv4 = IPv4(Genie.config.server_host)) :: HTTP.Response
-  isempty(Genie.config.server_signature) && sign_response!(res)
-  set_headers!(req, res, Genie.Router.route_request(req, res, ip))
-end
-
-
-"""
     handle_ws_request(req::HTTP.Request, msg::String, ws_client, ip::IPv4 = IPv4(Genie.config.server_host)) :: String
 
 Http server handler function - invoked when the server gets a request.
@@ -127,55 +172,40 @@ end
 
 
 """
-    set_headers!(req::HTTP.Request, res::HTTP.Response, app_response::HTTP.Response) :: HTTP.Response
-
-Configures the response headers.
 """
-function set_headers!(req::HTTP.Request, res::HTTP.Response, app_response::HTTP.Response) :: HTTP.Response
-  if req.method == Genie.Router.OPTIONS || req.method == Genie.Router.GET
+function keepalive(; host::String, protocol::String = "http", port::Int = 80, urls::Vector{String} = String[],
+                      interval::Int = 60, delay::Int = 30, nap::Int = 2, silent::Bool = true)
+  in(protocol, ["http", "https"]) || error("Protocol should be one of `http` or `https`")
 
-    request_origin = get(Dict(req.headers), "Origin", "")
+  function ping(t::Timer)
+    try
+      for u in urls
+        if ! isempty(u) && startswith(u, "/") && length(u) > 1
+          u = u[2:end]
+        elseif u == "/"
+          u = ""
+        end
 
-    allowed_origin_dict = Dict("Access-Control-Allow-Origin" =>
-      in(request_origin, Genie.config.cors_allowed_origins)
-      ? request_origin
-      : strip(Genie.config.cors_headers["Access-Control-Allow-Origin"])
-    )
+        url = protocol * "://" * host * ":" * "$port" * "/" * u
 
-    #=
-    Combine headers. If different values for the same keys,
-    use the following order of precedence:
-    app_response > res > allowed_origin > Genie.config
+        if ! silent
+          @info "Pinging $url"
+          HTTP.get(url)
+        else
+          HTTP.get(url);
+        end
 
-    The app_response likely has an automatically-determined
-    response type header that we want to keep.
-    =#
-    app_response.headers = [d for d in merge(Genie.config.cors_headers, allowed_origin_dict, Dict(res.headers), Dict(app_response.headers))]
+        sleep(nap)
+      end
+    catch ex
+      @error ex
+    end
   end
 
-  #=
-  Combine headers. If different values for the same keys,
-  use the following order of precedence:
-  app_response > res
-  =#
-  app_response.headers = [d for d in merge(Dict(res.headers), Dict(app_response.headers))]
+  t = Timer(ping, delay, interval = interval)
+  wait(t)
 
-  app_response
-end
-
-
-"""
-    sign_response!(res::HTTP.Response) :: HTTP.Response
-
-Adds a signature header to the response using the value in `Genie.config.server_signature`.
-If `Genie.config.server_signature` is empty, the header is not added.
-"""
-@inline function sign_response!(res::HTTP.Response) :: HTTP.Response
-  headers = Dict(res.headers)
-  isempty(Genie.config.server_signature) || (headers["Server"] = Genie.config.server_signature)
-
-  res.headers = [k for k in headers]
-  res
+  t
 end
 
 end

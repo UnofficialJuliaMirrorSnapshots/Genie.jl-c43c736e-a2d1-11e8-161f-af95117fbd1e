@@ -394,7 +394,7 @@ function to_link(route_name::Symbol, d::Dict{Symbol,T}; preserve_query::Bool = t
   end
 
   query_vars = Dict{String,String}()
-  if preserve_query
+  if preserve_query && haskey(task_local_storage(), :__params) && haskey(task_local_storage(:__params)[:REQUEST])
     query = URI(task_local_storage(:__params)[:REQUEST].target).query
     if ! isempty(query)
       for pair in split(query, '&')
@@ -509,8 +509,13 @@ function match_routes(req::HTTP.Request, res::HTTP.Response, session::Union{Geni
 
               result
             catch ex
-              isa(ex, RuntimeException) && to_response(ex)
-              isa(ex, ExceptionalResponse) ? (return ex.response) : Renderer.respond(ex) #rethrow(ex)
+              if isa(ex, ExceptionalResponse)
+                return ex.response
+              elseif isa(ex, RuntimeException)
+                rethrow(ex)
+              elseif isa(ex, Exception)
+                rethrow(ex)
+              end
             end
   end
 
@@ -853,8 +858,12 @@ function to_response(action_result) :: HTTP.Response
     HTTP.Response("")
   elseif isa(action_result, String)
     Renderer.respond(action_result)
+  elseif isa(action_result, ExceptionalResponse)
+    action_result.response
   elseif isa(action_result, RuntimeException)
-    err(action_result.message, error_info = action_result.info, error_code = action_result.code)
+    throw(action_result)
+  elseif isa(action_result, Exception)
+    throw(action_result)
   else
     HTTP.Response(string(action_result))
   end
