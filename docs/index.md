@@ -12,11 +12,15 @@ Genie is compatible with Julia v1.0 and up.
 
 ## Getting started
 
+**First steps for building Genie apps.**
+
 [The Genie Walkthrough: Developing Genie Apps, the Basics](guides/Working_With_Genie_Apps.md)
 
 [The Genie Walkthrough: Developing Genie Apps, Intermediate Topics](guides/Working_With_Genie_Apps_Intermediary_Topics.md)
 
 ## Documentation
+
+**A deeper dive into the various Genie features and modules.**
 
 [Overview](documentation/1--Overview.md)
 
@@ -36,7 +40,7 @@ Genie is compatible with Julia v1.0 and up.
 
 [Adding Your Existing Julia Code into Genie](documentation/9--Publishing_Your_Julia_Code_Online_With_Genie_Apps.md)
 
-[Loading Genie Apps](documentation/10--Loading_and Starting_Genie_Apps.md)
+[Loading Genie Apps](documentation/10--Loading_Genie_Apps.md)
 
 [Managing External Dependencies](documentation/11--Managing_External_Packages.md)
 
@@ -50,7 +54,7 @@ Genie is compatible with Julia v1.0 and up.
 
 ## Guides
 
-Genie can be used for a variety of tasks, from quickly whipping up a web server to full MVC web apps. Use the following resources to dive into each use case.
+**Genie can be used for a variety of tasks, from quickly whipping up a web server to full MVC web apps. Use the following resources to dive into each use case.**
 
 [Using Genie in an Interactive Environment (Jupyter/IJulia, REPL, etc)](guides/Interactive_environment.md)
 
@@ -62,11 +66,14 @@ Genie can be used for a variety of tasks, from quickly whipping up a web server 
 
 ## Deployment
 
-Guides for deployments on various hosts.
+**Guides for deployments on various hosts.**
 
-[Deploying with Heroku](documentation/90--Deploying_With_Heroku.md)
+[Genie and Docker Integration](documentation/16--Using_Genie_With_Docker.md)
+
+[Deploying with Heroku Buildpacks](documentation/90--Deploying_With_Heroku_Buildpacks.md)
 
 ## API docs
+
 [Developer API Docs](documentation/API)
 
 ## Acknowledgements

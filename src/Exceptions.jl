@@ -1,8 +1,8 @@
 module Exceptions
 
-using Revise
-using Genie
-using HTTP
+import Revise
+import Genie
+import HTTP
 
 export ExceptionalResponse, RuntimeException
 
@@ -13,6 +13,8 @@ end
 function Base.show(io::IO, ex::ExceptionalResponse)
   print(io, "ExceptionalResponseException: $(ex.response.status) - $(Dict(ex.response.headers))")
 end
+
+###
 
 struct RuntimeException <: Exception
   message::String
@@ -26,6 +28,16 @@ RuntimeException(message::String, info::String, code::Int) = RuntimeException(me
 
 function Base.show(io::IO, ex::RuntimeException)
   print(io, "RuntimeException: $(ex.code) - $(ex.info) - $(ex.message)")
+end
+
+###
+
+struct InternalServerErrorException <: Exception
+end
+
+###
+
+struct PageNotFoundException <: Exception
 end
 
 end

@@ -3,7 +3,7 @@ Functionality for handling the defautl conent of the various Genie files (migrat
 """
 module FileTemplates
 
-using Genie.Inflector
+import Genie.Inflector
 
 
 """
@@ -111,7 +111,7 @@ end
 
 
 function dockerfile(; user::String = "genie", supervisor::Bool = false, nginx::Bool = false, env::String = "dev",
-                      filename::String = "Dockerfile", port::Int = 8000, dockerport::Int = 80)
+                      filename::String = "Dockerfile", port::Int = 8000, dockerport::Int = 80, host::String = "0.0.0.0")
   appdir = "/home/$user/app"
 
   """
@@ -141,6 +141,8 @@ function dockerfile(; user::String = "genie", supervisor::Bool = false, nginx::B
 
   ENV JULIA_DEPOT_PATH "/home/$user/.julia"
   ENV GENIE_ENV "$env"
+  ENV HOST "$host"
+  ENV PORT "$port"
 
   CMD ["bin/server"]
   """
