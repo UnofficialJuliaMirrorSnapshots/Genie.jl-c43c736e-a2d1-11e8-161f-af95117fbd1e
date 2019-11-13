@@ -89,27 +89,6 @@ function appmodule(path::String)
 end
 
 
-function runtests()
-  """
-  isdefined(Main, :UserApp) || include(normpath(joinpath("..", "bootstrap.jl")))
-
-  using Revise
-  using Test
-  using Genie, Genie.Tester, Genie.Router
-
-  current_env = Genie.config.app_env
-
-  Tester.setenv()
-
-  @testset "Integration testing" begin
-    # awesome tests here
-  end
-
-  Tester.setenv(current_env)
-  """
-end
-
-
 function dockerfile(; user::String = "genie", supervisor::Bool = false, nginx::Bool = false, env::String = "dev",
                       filename::String = "Dockerfile", port::Int = 8000, dockerport::Int = 80, host::String = "0.0.0.0")
   appdir = "/home/$user/app"

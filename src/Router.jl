@@ -2,7 +2,7 @@ module Router
 
 import Revise
 import Reexport, Logging
-import HTTP, URIParser, HttpCommon, Nullables, Sockets, Millboard, Dates, OrderedCollections
+import HTTP, URIParser, HttpCommon, Sockets, Millboard, Dates, OrderedCollections
 import Genie, Genie.HTTPUtils, Genie.Sessions, Genie.Configuration, Genie.Input, Genie.Util, Genie.Renderer, Genie.Exceptions
 
 include("mimetypes.jl")
@@ -124,7 +124,7 @@ function route_request(req::HTTP.Request, res::HTTP.Response, ip::Sockets.IPv4 =
 
   Revise.revise()
 
-  session, res = Genie.config.session_auto_start ? Sessions.start(req, res) : (nothing, res)
+  session, res = Genie.config.session_auto_start ? Genie.Sessions.start(req, res) : (nothing, res)
 
   try
     res = match_routes(req, res, session, params)
@@ -164,7 +164,7 @@ function route_ws_request(req, msg::String, ws_client, ip::Sockets.IPv4 = Socket
 
   Revise.revise()
 
-  session = Genie.config.session_auto_start ? Sessions.load(Sessions.id(req)) : nothing
+  session = Genie.config.session_auto_start ? Genie.Sessions.load(Genie.Sessions.id(req)) : nothing
 
   match_channels(req, msg, ws_client, params, session)
 end
@@ -513,6 +513,10 @@ function match_routes(req::HTTP.Request, res::HTTP.Response, session::Union{Geni
                 return ex.response
               elseif isa(ex, Genie.Exceptions.RuntimeException)
                 rethrow(ex)
+              elseif isa(ex, Genie.Exceptions.InternalServerException)
+                return error_500(ex.message)
+              elseif isa(ex, Genie.Exceptions.NotFoundException)
+                return error_404(ex.resource)
               elseif isa(ex, Exception)
                 rethrow(ex)
               end
@@ -826,12 +830,11 @@ function setup_base_params(req::HTTP.Request, res::Union{HTTP.Response,Nothing},
   params[Genie.PARAMS_FLASH_KEY]     = Genie.config.session_auto_start ?
                                        begin
                                         s = Genie.Sessions.get(session, Genie.PARAMS_FLASH_KEY)
-                                        if Nullables.isnull(s)
+                                        if s === nothing
                                           ""
                                         else
-                                          ss = Base.get(s)
                                           Genie.Sessions.unset!(session, Genie.PARAMS_FLASH_KEY)
-                                          ss
+                                          s
                                         end
                                        end : ""
 
@@ -1002,7 +1005,7 @@ end
 
 Reads the static file and returns the content as a `Response`.
 """
-function serve_static_file(resource::String; root = Genie.DOC_ROOT_PATH) :: HTTP.Response
+function serve_static_file(resource::String; root = Genie.config.server_document_root) :: HTTP.Response
   startswith(resource, "/") || (resource = "/$resource")
   resource_path = try
                     URIParser.URI(resource).path
@@ -1087,8 +1090,8 @@ function serve_error_file(error_code::Int, error_message::String = "", params::D
   page_code = error_code in [404, 500] ? "$error_code" : "xxx"
 
   try
-    error_page_file = isfile(joinpath(Genie.DOC_ROOT_PATH, "error-$page_code.html")) ?
-                        joinpath(Genie.DOC_ROOT_PATH, "error-$page_code.html") :
+    error_page_file = isfile(joinpath(Genie.config.server_document_root, "error-$page_code.html")) ?
+                        joinpath(Genie.config.server_document_root, "error-$page_code.html") :
                           joinpath(@__DIR__, "..", "files", "static", "error-$page_code.html")
 
     error_page =  open(error_page_file) do f
@@ -1127,8 +1130,8 @@ end
 
 Returns the path to a resource file. If `within_doc_root` it will automatically prepend the document root to `resource`.
 """
-function file_path(resource::String; within_doc_root = true, root = Genie.DOC_ROOT_PATH) :: String
-  within_doc_root = within_doc_root && root == Genie.DOC_ROOT_PATH
+function file_path(resource::String; within_doc_root = true, root = Genie.config.server_document_root) :: String
+  within_doc_root = within_doc_root && root == Genie.config.server_document_root
   joinpath(within_doc_root ? Genie.config.server_document_root : root, resource[(startswith(resource, "/") ? 2 : 1):end])
 end
 const filepath = file_path
