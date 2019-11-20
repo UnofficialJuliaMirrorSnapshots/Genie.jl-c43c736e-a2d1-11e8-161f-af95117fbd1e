@@ -9,7 +9,6 @@ import Genie, Genie.Util, Genie.Configuration, Genie.Exceptions
 Reexport.@reexport using Genie.Flax
 
 const Html = Genie.Flax
-
 export Html
 
 const DEFAULT_CHARSET = "charset=utf-8"
@@ -138,11 +137,22 @@ end
 
 function render(::Type{MIME"text/html"}, data::String;
                 context::Module = @__MODULE__, layout::Union{String,Nothing} = nothing, vars...) :: WebRenderable
-  WebRenderable(RENDERERS[MIME"text/html"].render(data; context = context, layout = layout, vars...) |> Base.invokelatest)
+  try
+    WebRenderable(RENDERERS[MIME"text/html"].render(data; context = context, layout = layout, vars...) |> Base.invokelatest)
+  catch ex
+    isa(ex, KeyError) && Flax.changebuilds() # it's a view error so don't reuse them
+    rethrow(ex)
+  end
 end
 function render(::Type{MIME"text/html"}, viewfile::FilePath; layout::Union{Nothing,FilePath} = nothing,
                   context::Module = @__MODULE__, vars...) :: WebRenderable
-  WebRenderable(RENDERERS[MIME"text/html"].render(viewfile; layout = layout, context = context, vars...) |> Base.invokelatest)
+  try
+    WebRenderable(RENDERERS[MIME"text/html"].render(viewfile; layout = layout, context = context, vars...) |> Base.invokelatest)
+  catch ex
+    isa(ex, KeyError) && Flax.changebuilds() # it's a view error so don't reuse them
+
+    rethrow(ex)
+  end
 end
 
 

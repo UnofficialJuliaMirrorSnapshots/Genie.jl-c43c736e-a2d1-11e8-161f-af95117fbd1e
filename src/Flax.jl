@@ -23,6 +23,8 @@ using .HTMLRenderer
 include("JSONRenderer.jl")
 using .JSONRenderer
 
+const Html = @__MODULE__
+
 const BUILD_NAME    = "FlaxViews"
 
 
@@ -108,11 +110,16 @@ end
 
 Loads the rendering vars into the task's scope
 """
-function registervars(vars...) :: Nothing
+@inline function registervars(vars...) :: Nothing
   init_task_local_storage()
   task_local_storage(:__vars, merge(Dict{Symbol,Any}(vars), task_local_storage(:__vars)))
 
   nothing
+end
+
+
+@inline function vars_signature() :: String
+  task_local_storage(:__vars) |> keys |> collect |> sort |> string
 end
 
 
@@ -122,7 +129,7 @@ end
 Generates function name for generated Flax views.
 """
 @inline function function_name(file_path::String) :: String
-  "func_$(SHA.sha1(relpath(isempty(file_path) ? " " : file_path)) |> bytes2hex)"
+  "func_$(SHA.sha1( relpath(isempty(file_path) ? " " : file_path) * vars_signature() ) |> bytes2hex)"
 end
 
 
@@ -132,7 +139,7 @@ end
 Generates module name for generated Flax views.
 """
 @inline function m_name(file_path::String) :: String
-  string(SHA.sha1(relpath(isempty(file_path) ? " " : file_path)) |> bytes2hex)
+  string(SHA.sha1( relpath(isempty(file_path) ? " " : file_path) * vars_signature()) |> bytes2hex)
 end
 
 
@@ -161,13 +168,33 @@ end
 
 Converts an input file to Flax code
 """
-@inline function to_flax(input::String, f::Function; partial = true, f_name::Union{Symbol,Nothing} = nothing, prepend = "") :: String
+@inline function to_flax(input::String, f::Function; partial = true, f_name::Union{Symbol,Nothing} = nothing, prepend = "\n") :: String
   f_name = (f_name === nothing) ? function_name(string(input, partial)) : f_name
 
   string("function $(f_name)() \n",
+          injectvars(),
           prepend,
           f(input, partial = partial),
           "\nend \n")
+end
+
+
+function injectvars() :: String
+  output = ""
+  for kv in task_local_storage(:__vars)
+    output *= "$(kv[1]) = @vars($(repr(kv[1]))) \n"
+  end
+
+  output
+end
+
+
+function injectvars(context::Module) :: Nothing
+  for kv in task_local_storage(:__vars)
+    isdefined(context, Symbol(kv[1])) || Core.eval(context, Meta.parse("$(kv[1]) = @vars($(repr(kv[1])))"))
+  end
+
+  nothing
 end
 
 
@@ -264,18 +291,22 @@ Generated functions that represent Flax functions definitions corresponding to H
 end
 
 
-@inline function register_element(elem::Symbol, elem_type::Symbol = :normal) :: Nothing
+@inline function register_element(elem::Union{Symbol,String}, elem_type::Union{Symbol,String} = :normal; context = Flax) :: Nothing
+  elem = string(elem)
+  occursin('-', elem) && (elem = HTMLRenderer.denormalize_element(elem))
+
   elem_type == :normal ? register_normal_element(elem) : register_void_element(elem)
 end
 
 
-function register_normal_element(elem::Symbol) :: Nothing
-  Core.eval(@__MODULE__, """
+function register_normal_element(elem::Union{Symbol,String}; context = Flax) :: Nothing
+  Core.eval(context, """
     function $elem(f::Function, args...; attrs...) :: HTMLString
       \"\"\"\$(HTMLRenderer.normal_element(f, "$(string(elem))", [args...], Pair{Symbol,Any}[attrs...]))\"\"\"
     end
   """ |> Meta.parse)
-  Core.eval(@__MODULE__, """
+
+  Core.eval(context, """
     function $elem(children::Union{String,Vector{String}} = "", args...; attrs...) :: HTMLString
       \"\"\"\$(HTMLRenderer.normal_element(children, "$(string(elem))", [args...], Pair{Symbol,Any}[attrs...]))\"\"\"
     end
@@ -285,8 +316,8 @@ function register_normal_element(elem::Symbol) :: Nothing
 end
 
 
-function register_void_element(elem::Symbol) :: Nothing
-  Core.eval(@__MODULE__, """
+function register_void_element(elem::Union{Symbol,String}; context = Flax) :: Nothing
+  Core.eval(context, """
     function $elem(args...; attrs...) :: HTMLString
       \"\"\"\$(HTMLRenderer.void_element("$(string(elem))", [args...], Pair{Symbol,Any}[attrs...]))\"\"\"
     end
@@ -309,12 +340,16 @@ The results of each iteration are concatenated and the final string is returned.
 end
 """
 macro foreach(f, arr)
-  quote
+  e = quote
     isempty($(esc(arr))) && return ""
 
     mapreduce(*, $(esc(arr))) do _s
-      $f(_s) * "\n"
+      $(esc(f))(_s)
     end
+  end
+
+  quote
+    Core.eval($__module__, $e)
   end
 end
 
@@ -383,20 +418,28 @@ end
 
 
 """
-    prepare_build() :: Bool
+    preparebuilds() :: Bool
 
 Sets up the build folder and the build module file for generating the compiled views.
 """
-function prepare_build(subfolder = BUILD_NAME) :: Bool
+function preparebuilds(subfolder = BUILD_NAME) :: Bool
   build_path = joinpath(Genie.config.path_build, subfolder)
-
-  Genie.Configuration.@ifdev rm(build_path, force = true, recursive = true)
-  if ! isdir(build_path)
-    @info "Creating build folder at $(build_path)"
-    mkpath(build_path)
-  end
+  isdir(build_path) || mkpath(build_path)
 
   true
+end
+
+
+function purgebuilds(subfolder = BUILD_NAME) :: Bool
+  rm(joinpath(Genie.config.path_build, subfolder), force = true, recursive = true)
+
+  true
+end
+
+
+function changebuilds(subfolder = BUILD_NAME) :: Bool
+  Genie.config.path_build = Genie.Configuration.buildpath()
+  preparebuilds()
 end
 
 end
